@@ -9,8 +9,10 @@ CREATE TABLE IF NOT EXISTS conversions (
   parse_outcome TEXT NOT NULL,         -- 'caption' | 'vision' | 'failed'
   confidence REAL,
   latency_ms INTEGER,
-  quota_hit INTEGER NOT NULL DEFAULT 0
+  quota_hit INTEGER NOT NULL DEFAULT 0,
+  model TEXT                           -- which provider resolved this (e.g. 'gemini/gemini-1.5-flash-latest')
 );
+-- If migrating an existing deploy: ALTER TABLE conversions ADD COLUMN model TEXT;
 CREATE INDEX IF NOT EXISTS idx_conversions_user_ts ON conversions(user_hash, ts);
 CREATE INDEX IF NOT EXISTS idx_conversions_ts ON conversions(ts);
 

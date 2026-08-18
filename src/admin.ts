@@ -1,4 +1,5 @@
 import type { Env } from "./env.js";
+import { primaryParser, available } from "./lib/parsers/index.js";
 
 // The admin wizard is a single self-contained HTML page. It is gated
 // by a bearer token stored as the ADMIN_TOKEN secret. The page's own
@@ -17,6 +18,10 @@ interface Health {
   d1Ok: boolean;
   kvOk: boolean;
   queueBound: boolean;
+  parserPrimary: "gemini" | "workers-ai";
+  parserFallback: "gemini" | "workers-ai" | null;
+  geminiAvailable: boolean;
+  workersAiAvailable: boolean;
 }
 
 function authOk(env: Env, req: Request): boolean {
@@ -67,6 +72,7 @@ export async function handleAdmin(req: Request, env: Env): Promise<Response> {
   }
   if (url.pathname === "/admin/test/meta") return json(await testMeta(env));
   if (url.pathname === "/admin/test/gemini") return json(await testGemini(env));
+  if (url.pathname === "/admin/test/ai") return json(await testAi(env));
   if (url.pathname === "/admin/test/d1") return json(await testD1(env));
   if (url.pathname === "/admin/test/kv") return json(await testKv(env));
   if (url.pathname === "/admin/stats") return json(await stats(env));
@@ -91,6 +97,8 @@ async function health(env: Env, url: URL): Promise<Health> {
     await env.RATE_KV.get("__probe__");
     kvOk = true;
   } catch { /* noop */ }
+  const primary = primaryParser(env);
+  const fallback: "gemini" | "workers-ai" = primary === "gemini" ? "workers-ai" : "gemini";
   return {
     metaVerifyTokenSet: !!env.META_VERIFY_TOKEN,
     metaAppSecretSet: !!env.META_APP_SECRET,
@@ -104,6 +112,10 @@ async function health(env: Env, url: URL): Promise<Health> {
     d1Ok,
     kvOk,
     queueBound: !!env.SHARE_QUEUE,
+    parserPrimary: primary,
+    parserFallback: available(env, fallback) ? fallback : null,
+    geminiAvailable: available(env, "gemini"),
+    workersAiAvailable: available(env, "workers-ai"),
   };
 }
 
@@ -127,6 +139,21 @@ async function testGemini(env: Env): Promise<{ ok: boolean; detail: string }> {
     );
     const body = await res.text();
     return { ok: res.ok, detail: `${res.status} ${body.slice(0, 200)}…` };
+  } catch (e) {
+    return { ok: false, detail: String(e) };
+  }
+}
+
+async function testAi(env: Env): Promise<{ ok: boolean; detail: string }> {
+  const bind = (env as unknown as { AI?: { run(model: string, input: unknown): Promise<unknown> } }).AI;
+  if (!bind) return { ok: false, detail: "AI binding not present — add `[ai] binding = \"AI\"` to wrangler.toml and re-deploy" };
+  try {
+    const r = await bind.run("@cf/meta/llama-3.1-8b-instruct", {
+      messages: [{ role: "user", content: "reply with just OK" }],
+      max_tokens: 4,
+    });
+    const text = (r as { response?: string }).response ?? "";
+    return { ok: text.length > 0, detail: `response: ${text.slice(0, 80)}` };
   } catch (e) {
     return { ok: false, detail: String(e) };
   }
@@ -237,10 +264,13 @@ input.copyable { width: 100%; padding: .4rem; font: 13px/1.4 ui-monospace, Menlo
   <div class="detail" id="d-meta"></div>
 </div>
 
-<h2>4. Gemini</h2>
-<div class="step" id="s-gemini">
+<h2>4. Parsers</h2>
+<div class="step" id="s-parser">
+  <div id="parser-config">Loading…</div>
   <div class="row"><button data-test="gemini">Test Gemini key</button><span id="r-gemini" class="pill dim">unknown</span></div>
   <div class="detail" id="d-gemini"></div>
+  <div class="row"><button data-test="ai">Test Workers AI (Llama)</button><span id="r-ai" class="pill dim">unknown</span></div>
+  <div class="detail" id="d-ai"></div>
 </div>
 
 <h2>5. Storage</h2>
@@ -292,6 +322,12 @@ async function load() {
 
   document.getElementById('webhookUrl').value = h.webhookUrl;
   document.getElementById('verifyToken').value = h.verifyToken || '(set META_VERIFY_TOKEN first)';
+
+  const fb = h.parserFallback ? h.parserFallback : '(none available)';
+  document.getElementById('parser-config').innerHTML =
+    '<div class="row"><span>Primary parser</span><code>' + h.parserPrimary + '</code></div>' +
+    '<div class="row"><span>Fallback parser</span><code>' + fb + '</code></div>' +
+    '<div class="detail">Change with the PARSER_PRIMARY var in wrangler.toml. The other parser is used as fallback automatically when available.</div>';
 
   const s = await j('/admin/stats');
   document.getElementById('stats').textContent = JSON.stringify(s, null, 2);

@@ -12,19 +12,29 @@ product spec. Phase-2 gating lives in `THRESHOLDS.md`.
 ```
 src/
   worker.ts          fetch + queue entrypoints (webhook, ICS, redirect, consumer)
-  env.ts             typed bindings (D1, KV, Queue) + ShareJob
+  env.ts             typed bindings (D1, KV, Queue, AI) + ShareJob
   messages.ts        user-facing DM copy in one place
   lib/
     meta.ts          Meta Graph API: signature-safe webhook parse, sendDM, fetchPost
-    parse.ts         Gemini text → vision cascade with structured JSON output
+    parsers/         pluggable parser cascade
+      types.ts       Parser interface + shared prompt + defensive JSON extract
+      gemini.ts      Gemini 1.5 Flash text+vision (native structured output)
+      workers_ai.ts  Llama 3.2 Vision via the Cloudflare AI binding
+      index.ts       primary/fallback orchestrator; tags result with `model`
     calendar.ts      GCal URL builder, .ics builder, HMAC-signed link tokens
+    tz.ts            naive-local → real-UTC via Intl (two-pass, DST-safe)
     crypto.ts        HMAC + SHA-256 helpers (Web Crypto)
     quota.ts         per-user monthly conversion cap
     log.ts           D1 conversion + click writes
     rate.ts          per-user fixed-window rate limit (KV)
-test/                vitest unit tests for calendar, crypto, meta parsing
+    idempotency.ts   dedupe on (sender_id, mid)
+    deletion.ts      erase all rows for a user, return confirmation code
+    signed_request.ts Meta signed_request HMAC verifier
+  admin.ts           /admin bearer-token wizard (secrets, tests, stats)
+  pages.ts           /privacy, /terms, /deletion static pages
+test/                vitest unit tests
 schema.sql           D1 tables
-wrangler.toml        one Worker, one Queue producer + consumer
+wrangler.toml        Worker + queue + D1 + KV + AI bindings
 ```
 
 ## Setup
@@ -93,6 +103,22 @@ SELECT date(ts/1000, 'unixepoch', 'weekday 0', '-6 days') AS week_start,
 -- quota pressure
 SELECT yyyymm, COUNT(*) FROM quota WHERE count >= 5 GROUP BY yyyymm;
 ```
+
+## Model choice
+
+The parser is pluggable. Two implementations ship:
+
+- **`gemini`** — Gemini 1.5 Flash via the public API. Best OCR/vision
+  accuracy on flyer-style images and native structured-JSON output.
+  Requires `GEMINI_API_KEY`. **Default primary.**
+- **`workers-ai`** — Llama 3.2 11B Vision via the Cloudflare AI
+  binding. In-Worker, zero egress, no key management. Weaker on
+  dense flyer text but a clean fallback when Gemini rate-limits.
+
+Change the primary with `PARSER_PRIMARY = "workers-ai"` in
+`wrangler.toml`. The other parser is automatically used as fallback
+if its dependencies are available. Every `conversions` row records
+which model produced the result, so accuracy can be A/B'd from data.
 
 ## Deferred, on purpose
 

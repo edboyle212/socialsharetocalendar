@@ -1,4 +1,4 @@
-import type { ParsedEvent } from "./parse.js";
+import type { ParsedEvent } from "./parsers/types.js";
 import { hmacHex } from "./crypto.js";
 
 export interface CalendarContext {

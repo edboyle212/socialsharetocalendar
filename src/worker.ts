@@ -1,7 +1,7 @@
 import type { Env, ShareJob } from "./env.js";
 import { verifyMetaSignature, hashUser } from "./lib/crypto.js";
 import { extractShareMessages, sendDM, fetchPost, downloadMedia } from "./lib/meta.js";
-import { parseCascade } from "./lib/parse.js";
+import { runCascade } from "./lib/parsers/index.js";
 import {
   buildPayload,
   googleCalendarUrl,
@@ -191,7 +191,7 @@ async function processShare(env: Env, job: ShareJob): Promise<void> {
     }
   }
 
-  const parsed = await parseCascade(env, { caption: post.caption, imageBytes, imageMime });
+  const parsed = await runCascade(env, { caption: post.caption, imageBytes, imageMime });
 
   if (parsed.outcome === "failed" || !parsed.start) {
     const msg =
@@ -207,6 +207,7 @@ async function processShare(env: Env, job: ShareJob): Promise<void> {
       confidence: parsed.confidence,
       latency_ms: Date.now() - started,
       quota_hit: false,
+      model: parsed.model,
     });
     return;
   }
@@ -239,6 +240,7 @@ async function processShare(env: Env, job: ShareJob): Promise<void> {
     confidence: parsed.confidence,
     latency_ms: Date.now() - started,
     quota_hit: false,
+    model: parsed.model,
   });
   await increment(env, userHash);
 
