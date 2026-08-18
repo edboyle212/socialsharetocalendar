@@ -1,5 +1,6 @@
 import type { Env } from "./env.js";
 import { primaryParser, available } from "./lib/parsers/index.js";
+import { buildDigest, deliverDigest, loadLastDigest, formatDigest } from "./lib/digest.js";
 
 // The admin wizard is a single self-contained HTML page. It is gated
 // by a bearer token stored as the ADMIN_TOKEN secret. The page's own
@@ -76,6 +77,12 @@ export async function handleAdmin(req: Request, env: Env): Promise<Response> {
   if (url.pathname === "/admin/test/d1") return json(await testD1(env));
   if (url.pathname === "/admin/test/kv") return json(await testKv(env));
   if (url.pathname === "/admin/stats") return json(await stats(env));
+  if (url.pathname === "/admin/digest/last") return json(await lastDigestPayload(env));
+  if (url.pathname === "/admin/digest/run" && req.method === "POST") {
+    const d = await buildDigest(env);
+    const delivery = await deliverDigest(env, d);
+    return json({ text: formatDigest(d), digest: d, delivery });
+  }
 
   return new Response("not found", { status: 404 });
 }
@@ -187,6 +194,12 @@ interface Stats {
   outcomeSplit: Array<{ parse_outcome: string; n: number }>;
   quotaHits30d: number;
   activeUsers30d: number;
+  dlq7d: number;
+  digestWebhookConfigured: boolean;
+}
+
+async function lastDigestPayload(env: Env): Promise<unknown> {
+  return (await loadLastDigest(env)) ?? { text: "(no digest run yet)", digest: null };
 }
 
 async function stats(env: Env): Promise<Stats> {
@@ -204,12 +217,17 @@ async function stats(env: Env): Promise<Stats> {
   const active = (await env.DB.prepare(
     "SELECT COUNT(DISTINCT user_hash) AS n FROM conversions WHERE ts >= ?",
   ).bind(month).first<{ n: number }>())?.n ?? 0;
+  const dlq7 = (await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM dlq_events WHERE ts >= ?",
+  ).bind(week).first<{ n: number }>())?.n ?? 0;
   return {
     totalConversions: total,
     last7d: last7,
     outcomeSplit: split,
     quotaHits30d: qHits,
     activeUsers30d: active,
+    dlq7d: dlq7,
+    digestWebhookConfigured: !!env.DIGEST_WEBHOOK_URL,
   };
 }
 
@@ -284,6 +302,13 @@ input.copyable { width: 100%; padding: .4rem; font: 13px/1.4 ui-monospace, Menlo
 <h2>6. Live stats</h2>
 <pre id="stats">…</pre>
 
+<h2>7. Weekly digest</h2>
+<div class="step" id="s-digest">
+  <div class="row"><button id="run-digest">Run digest now</button><span id="r-digest" class="pill dim">idle</span></div>
+  <div class="detail" id="d-digest">Runs automatically every Monday 14:00 UTC (cron in wrangler.toml). Posts to <code>DIGEST_WEBHOOK_URL</code> if set (Slack/Discord shape).</div>
+  <pre id="last-digest">…</pre>
+</div>
+
 <script>
 const q = new URLSearchParams(location.search);
 const t = q.get('t');
@@ -331,7 +356,21 @@ async function load() {
 
   const s = await j('/admin/stats');
   document.getElementById('stats').textContent = JSON.stringify(s, null, 2);
+  const last = await j('/admin/digest/last');
+  document.getElementById('last-digest').textContent = last?.text ?? '(no digest run yet)';
 }
+
+document.getElementById('run-digest').addEventListener('click', async () => {
+  const pill = document.getElementById('r-digest');
+  pill.textContent = 'running…'; pill.className = 'pill dim';
+  const r = await fetch('/admin/digest/run' + (t ? '?t=' + encodeURIComponent(t) : ''), {
+    method: 'POST', headers: H,
+  });
+  const body = await r.json();
+  pill.textContent = body?.delivery?.webhookPosted ? 'posted' : (body?.delivery?.kvStored ? 'stored' : 'error');
+  pill.className = 'pill ' + (r.ok ? 'ok' : 'bad');
+  document.getElementById('last-digest').textContent = body?.text ?? JSON.stringify(body, null, 2);
+});
 
 document.querySelectorAll('button[data-test]').forEach(b => {
   b.addEventListener('click', async () => {

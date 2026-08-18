@@ -56,6 +56,7 @@ npx wrangler secret put LINK_SIGNING_SECRET
 npx wrangler secret put USER_HASH_SALT
 npx wrangler secret put PUBLIC_BASE_URL       # e.g. https://ig-share2calendar.workers.dev
 npx wrangler secret put ADMIN_TOKEN           # any high-entropy string; gates /admin
+npx wrangler secret put DIGEST_WEBHOOK_URL    # optional Slack/Discord webhook for weekly digest
 ```
 
 ## Admin wizard
@@ -103,6 +104,22 @@ SELECT date(ts/1000, 'unixepoch', 'weekday 0', '-6 days') AS week_start,
 -- quota pressure
 SELECT yyyymm, COUNT(*) FROM quota WHERE count >= 5 GROUP BY yyyymm;
 ```
+
+## Weekly digest and Phase-2 gating
+
+Cron in `wrangler.toml` fires the `scheduled` handler every Monday at
+14:00 UTC. It runs `buildDigest(env)` — 7d volumes, 30d model split,
+quota pressure, weekly history, and evaluates the Phase-2 triggers
+from `THRESHOLDS.md`. Delivery is:
+
+1. `POST` to `DIGEST_WEBHOOK_URL` if set (Slack/Discord shape:
+   `{ text, digest }`), and
+2. Stored to KV under `digest:last` for 8 weeks — the admin wizard
+   shows it, and the "Run digest now" button re-runs it on demand.
+
+Dead-letter jobs (three retries exhausted) go through a second queue
+consumer that logs to `dlq_events` and, when still inside the IG 24h
+messaging window, sends the user an apology DM.
 
 ## Model choice
 

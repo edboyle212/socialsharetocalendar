@@ -18,6 +18,8 @@ import { eraseUser } from "./lib/deletion.js";
 import { parseSignedRequest } from "./lib/signed_request.js";
 import { handleAdmin } from "./admin.js";
 import { privacyPage, termsPage, deletionInfoPage } from "./pages.js";
+import { handleDeadLetter } from "./lib/dlq.js";
+import { buildDigest, deliverDigest } from "./lib/digest.js";
 import { M } from "./messages.js";
 
 interface LinkToken {
@@ -55,6 +57,18 @@ export default {
   },
 
   async queue(batch: MessageBatch<ShareJob>, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // One handler serves both queues; dispatch by batch.queue.
+    if (batch.queue === "share-events-dlq") {
+      for (const msg of batch.messages) {
+        try {
+          await handleDeadLetter(env, msg.body);
+        } catch (e) {
+          console.error("dlq handler failed", e);
+        }
+        msg.ack(); // dead-letter processing is best-effort; don't retry
+      }
+      return;
+    }
     for (const msg of batch.messages) {
       try {
         await processShare(env, msg.body);
@@ -64,6 +78,18 @@ export default {
         msg.retry();
       }
     }
+  },
+
+  async scheduled(_ctrl: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Cron cadence is set in wrangler.toml. Right now: Mondays 14:00 UTC.
+    ctx.waitUntil((async () => {
+      try {
+        const d = await buildDigest(env);
+        await deliverDigest(env, d);
+      } catch (e) {
+        console.error("scheduled digest failed", e);
+      }
+    })());
   },
 };
 

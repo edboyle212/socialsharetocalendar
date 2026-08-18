@@ -20,6 +20,15 @@ max_batch_timeout = 2
 max_retries = 3
 dead_letter_queue = "share-events-dlq"
 
+[[queues.consumers]]
+queue = "share-events-dlq"
+max_batch_size = 5
+max_batch_timeout = 5
+max_retries = 1
+
+[triggers]
+crons = ["0 14 * * 1"]  # Mondays 14:00 UTC → weekly digest
+
 [[d1_databases]]
 binding = "DB"
 database_name = "ig_share2calendar"

@@ -15,8 +15,9 @@ export interface Env {
   USER_HASH_SALT: string;
   PUBLIC_BASE_URL: string;
   ADMIN_TOKEN?: string;
-  PARSER_PRIMARY?: string;   // "gemini" (default) | "workers-ai"
-  AI?: unknown;              // Cloudflare Workers AI binding, when configured
+  PARSER_PRIMARY?: string;    // "gemini" (default) | "workers-ai"
+  AI?: unknown;               // Cloudflare Workers AI binding, when configured
+  DIGEST_WEBHOOK_URL?: string; // Slack/Discord-shaped incoming webhook for digests
 }
 
 export interface ShareJob {

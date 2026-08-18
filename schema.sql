@@ -38,6 +38,18 @@ CREATE TABLE IF NOT EXISTS seen_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_seen_ts ON seen_messages(ts);
 
+-- Dead-letter events for jobs that exhausted retries.
+CREATE TABLE IF NOT EXISTS dlq_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  user_hash TEXT,
+  sender_id TEXT,
+  received_at INTEGER,
+  attachment_url TEXT,
+  notified_user INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_dlq_ts ON dlq_events(ts);
+
 -- Deletion-request receipts, for Meta compliance and audit.
 CREATE TABLE IF NOT EXISTS deletion_requests (
   code TEXT PRIMARY KEY,
