@@ -1,5 +1,7 @@
 # ig-share2calendar
 
+[![ci](https://github.com/edboyle212/socialsharetocalendar/actions/workflows/ci.yml/badge.svg)](https://github.com/edboyle212/socialsharetocalendar/actions/workflows/ci.yml)
+
 Instagram → calendar link bot. User shares an IG post to the bot's DMs;
 the server parses the post and replies with an "Add to Google Calendar"
 link and a `.ics` download. One share in, one reply out — nothing else.
