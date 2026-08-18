@@ -5,7 +5,7 @@ export const M = {
   success: (title: string, when: string, gcal: string, ics: string) =>
     `📅 ${title}\n${when}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}`,
   partial: (fields: string, gcal: string, ics: string) =>
-    `Couldn't read all the details — here's what I got:\n${fields}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}\n\nReply with corrections and I'll try again.`,
+    `Couldn't read all the details — here's what I got:\n${fields}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}\n\nIf a field is wrong, reply with the correction (e.g. "TZ Europe/Berlin" or a corrected date) and re-share.`,
   notAnEvent:
     "This doesn't look like an event post — no date I could read. If you think I'm wrong, reply with the date and I'll try again.",
   parseFailed:

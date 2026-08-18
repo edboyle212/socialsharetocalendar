@@ -37,6 +37,30 @@ describe("calendar", () => {
     expect(u.searchParams.get("dates")).toMatch(/^\d{8}T\d{6}Z\/\d{8}T\d{6}Z$/);
   });
 
+  it("floating payload renders dates without Z suffix", () => {
+    const floaty = buildPayload(
+      { title: "Show", start: "2026-09-14T20:00:00", confidence: 0.7 },
+      ctx,
+      { floating: true },
+    )!;
+    expect(floaty.floating).toBe(true);
+    const u = new URL(googleCalendarUrl(floaty));
+    expect(u.searchParams.get("dates")).toMatch(/^\d{8}T\d{6}\/\d{8}T\d{6}$/);
+    const ics = buildIcs(floaty, "uid-2");
+    expect(ics).toContain("DTSTART:20260914T200000");
+    expect(ics).toContain("DTEND:20260914T220000");
+    expect(ics).not.toMatch(/DTSTART:\d{8}T\d{6}Z/);
+  });
+
+  it("floating payload with only start defaults to +2h floating end", () => {
+    const p = buildPayload(
+      { title: "Show", start: "2026-09-14T23:00:00", confidence: 0.7 },
+      ctx,
+      { floating: true },
+    )!;
+    expect(p.end).toBe("2026-09-15T01:00:00");
+  });
+
   it("ics has required VEVENT lines and escapes commas", () => {
     const p = buildPayload(event, ctx)!;
     const ics = buildIcs(p, "uid-1");

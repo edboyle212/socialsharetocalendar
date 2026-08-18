@@ -9,6 +9,7 @@ import {
   signToken,
   verifyToken,
 } from "./lib/calendar.js";
+import { normalizeTime } from "./lib/tz.js";
 import { currentUsage, cap, increment } from "./lib/quota.js";
 import { logConversion, logClick } from "./lib/log.js";
 import { allow } from "./lib/rate.js";
@@ -27,6 +28,7 @@ interface LinkToken {
     title: string;
     start: string;
     end: string;
+    floating: boolean;
     location: string;
     description: string;
   };
@@ -209,7 +211,21 @@ async function processShare(env: Env, job: ShareJob): Promise<void> {
     return;
   }
 
-  const payload = buildPayload(parsed, { permalink: post.permalink, username: post.username });
+  // Resolve naive local times against the parsed timezone. If Gemini
+  // gave us no TZ (unusual — the prompt requires it whenever a
+  // location signal exists), we fall back to floating time: no fixed
+  // instant, the user's calendar app shows it in whatever TZ they
+  // open it in. We still surface that fact in the reply.
+  const startNorm = normalizeTime(parsed.start!, parsed.timezone);
+  const endNorm = parsed.end ? normalizeTime(parsed.end, parsed.timezone) : startNorm;
+  const floating = startNorm.floating;
+  const resolvedTz = startNorm.assumedTz ?? parsed.timezone;
+
+  const payload = buildPayload(
+    { ...parsed, start: startNorm.iso, end: endNorm.iso },
+    { permalink: post.permalink, username: post.username },
+    { floating },
+  );
   if (!payload) {
     await safeSend(env, job.sender_id, M.parseFailed);
     return;
@@ -241,24 +257,38 @@ async function processShare(env: Env, job: ShareJob): Promise<void> {
   const gcalLink = `${base}/r/${gcalToken}`;
   const icsLink = `${base}/ics/${icsToken}`;
 
-  const when = formatWhen(payload.start, payload.end, parsed.timezone);
+  const when = formatWhen(payload.start, payload.end, resolvedTz, floating);
   const missing: string[] = [];
   if (!parsed.title) missing.push("title");
   if (!parsed.location) missing.push("location");
-  const text =
-    missing.length > 0
-      ? M.partial(
-          `• Title: ${payload.title}\n• When: ${when}\n• Where: ${payload.location || "unknown"}`,
-          gcalLink,
-          icsLink,
-        )
-      : M.success(payload.title, when, gcalLink, icsLink);
+  if (floating) missing.push("timezone");
+  const fields = `• Title: ${payload.title}\n• When: ${when}\n• Where: ${payload.location || "unknown"}${
+    floating ? "\n• Timezone: not detected (shown as local to you)" : ""
+  }`;
+  const text = missing.length > 0
+    ? M.partial(fields, gcalLink, icsLink)
+    : M.success(payload.title, when, gcalLink, icsLink);
   await safeSend(env, job.sender_id, text);
 }
 
-function formatWhen(startIso: string, endIso: string, tz?: string): string {
+function formatWhen(startIso: string, endIso: string, tz: string | undefined, floating: boolean): string {
   try {
-    const start = new Date(startIso);
+    if (floating) {
+      // Naive: render the wall-clock we were given, without pretending
+      // to know a UTC offset.
+      const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(startIso);
+      if (!m) return `${startIso} → ${endIso}`;
+      const [_, y, mo, d, h, mi] = m;
+      const asUtc = new Date(Date.UTC(+y!, +mo! - 1, +d!, +h!, +mi!));
+      return new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }).format(asUtc) + " (local)";
+    }
     const opts: Intl.DateTimeFormatOptions = {
       weekday: "short",
       month: "short",
@@ -268,7 +298,7 @@ function formatWhen(startIso: string, endIso: string, tz?: string): string {
       timeZone: tz,
       timeZoneName: "short",
     };
-    return new Intl.DateTimeFormat("en-US", opts).format(start);
+    return new Intl.DateTimeFormat("en-US", opts).format(new Date(startIso));
   } catch {
     return `${startIso} → ${endIso}`;
   }
