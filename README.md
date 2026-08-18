@@ -35,7 +35,7 @@ src/
   admin.ts           /admin bearer-token wizard (secrets, tests, stats)
   pages.ts           /privacy, /terms, /deletion static pages
 test/                vitest unit tests
-schema.sql           D1 tables
+migrations/          numbered .sql migrations (wrangler d1 tracks applied ones)
 wrangler.toml        Worker + queue + D1 + KV + AI bindings
 ```
 
@@ -47,7 +47,7 @@ npx wrangler d1 create ig_share2calendar          # copy id into wrangler.toml
 npx wrangler kv namespace create RATE_KV          # copy id into wrangler.toml
 npx wrangler queues create share-events
 npx wrangler queues create share-events-dlq
-npx wrangler d1 execute ig_share2calendar --file=schema.sql --remote
+npx wrangler d1 migrations apply ig_share2calendar --remote
 
 # Secrets:
 npx wrangler secret put META_APP_SECRET
@@ -121,6 +121,32 @@ Beyond sharing a post, a user can send plain-text messages:
 
 Corrections are logged with `parse_outcome = 'correction'` so they
 show up separately in analytics.
+
+## D1 migrations
+
+Schema changes live in `migrations/` as numbered files
+(`0001_init.sql`, `0002_something.sql`, …). Wrangler's D1 tooling
+records the applied set in a hidden `d1_migrations` table so re-runs
+are safe.
+
+To add a migration:
+
+```sh
+npx wrangler d1 migrations create ig_share2calendar add_something
+# edits an empty NNNN_add_something.sql — write SQL there
+npx wrangler d1 migrations apply ig_share2calendar --local   # sandbox
+npx wrangler d1 migrations apply ig_share2calendar --remote  # prod
+```
+
+Rules of thumb:
+
+- Every schema change (new table, new column, index, `ALTER`) is a
+  new file — never edit an already-applied migration.
+- Prefer additive changes. Drops or column removals are irreversible
+  in D1's forward-only model; back-fill or dual-write first.
+- The current app expects the schema at `0001_init.sql`. Older
+  deployments with no `d1_migrations` table should be treated as
+  fresh installs — apply from `0001` on a new database.
 
 ## Weekly digest and Phase-2 gating
 

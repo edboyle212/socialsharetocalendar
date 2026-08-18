@@ -1,24 +1,27 @@
--- D1 schema for IG Share2Calendar MVP.
--- Apply with: wrangler d1 execute ig_share2calendar --file=schema.sql
+-- 0001_init: full schema at first commit.
+--
+-- Apply with: wrangler d1 migrations apply ig_share2calendar --remote
+-- (or --local for the dev sandbox). Wrangler tracks applied migrations
+-- in the internal d1_migrations table; do not run this file with
+-- `d1 execute` on a database that already has applied migrations.
 
 CREATE TABLE IF NOT EXISTS conversions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts INTEGER NOT NULL,                 -- epoch ms
-  user_hash TEXT NOT NULL,             -- sha256(sender_id + salt)
+  ts INTEGER NOT NULL,
+  user_hash TEXT NOT NULL,
   permalink TEXT,
-  parse_outcome TEXT NOT NULL,         -- 'caption' | 'vision' | 'failed'
+  parse_outcome TEXT NOT NULL,        -- 'caption' | 'vision' | 'failed' | 'correction'
   confidence REAL,
   latency_ms INTEGER,
   quota_hit INTEGER NOT NULL DEFAULT 0,
-  model TEXT                           -- which provider resolved this (e.g. 'gemini/gemini-1.5-flash-latest')
+  model TEXT
 );
--- If migrating an existing deploy: ALTER TABLE conversions ADD COLUMN model TEXT;
 CREATE INDEX IF NOT EXISTS idx_conversions_user_ts ON conversions(user_hash, ts);
 CREATE INDEX IF NOT EXISTS idx_conversions_ts ON conversions(ts);
 
 CREATE TABLE IF NOT EXISTS quota (
   user_hash TEXT NOT NULL,
-  yyyymm TEXT NOT NULL,                -- e.g. '202608'
+  yyyymm TEXT NOT NULL,
   count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (user_hash, yyyymm)
 );
@@ -27,18 +30,16 @@ CREATE TABLE IF NOT EXISTS link_clicks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
   conversion_id INTEGER,
-  kind TEXT NOT NULL                   -- 'gcal' | 'ics'
+  kind TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_link_clicks_conversion ON link_clicks(conversion_id);
 
--- Idempotency: Meta retries webhooks. Dedupe by (sender_id, message_mid).
 CREATE TABLE IF NOT EXISTS seen_messages (
   key TEXT PRIMARY KEY,
   ts INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_seen_ts ON seen_messages(ts);
 
--- Dead-letter events for jobs that exhausted retries.
 CREATE TABLE IF NOT EXISTS dlq_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
@@ -50,7 +51,6 @@ CREATE TABLE IF NOT EXISTS dlq_events (
 );
 CREATE INDEX IF NOT EXISTS idx_dlq_ts ON dlq_events(ts);
 
--- Deletion-request receipts, for Meta compliance and audit.
 CREATE TABLE IF NOT EXISTS deletion_requests (
   code TEXT PRIMARY KEY,
   user_hash TEXT NOT NULL,
