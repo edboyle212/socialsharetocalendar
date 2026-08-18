@@ -4,6 +4,8 @@ const GRAPH = (env: Env) => `https://graph.facebook.com/${env.GRAPH_API_VERSION}
 
 export interface IncomingMessage {
   sender_id: string;
+  mid?: string;
+  text?: string;
   attachments: Array<{ type: string; payload: { url?: string; id?: string } }>;
 }
 
@@ -13,6 +15,8 @@ export interface IGWebhookBody {
     messaging?: Array<{
       sender?: { id?: string };
       message?: {
+        mid?: string;
+        text?: string;
         attachments?: Array<{ type?: string; payload?: { url?: string; id?: string } }>;
       };
     }>;
@@ -24,12 +28,15 @@ export function extractShareMessages(body: IGWebhookBody): IncomingMessage[] {
   for (const entry of body.entry ?? []) {
     for (const m of entry.messaging ?? []) {
       const sender = m.sender?.id;
+      if (!sender) continue;
       const atts = m.message?.attachments ?? [];
-      if (!sender || atts.length === 0) continue;
       const shareLike = atts
         .filter((a) => a && (a.type === "share" || a.type === "ig_reel" || a.type === "story_mention" || a.type === "image"))
         .map((a) => ({ type: a.type ?? "share", payload: { url: a.payload?.url, id: a.payload?.id } }));
-      if (shareLike.length > 0) out.push({ sender_id: sender, attachments: shareLike });
+      const text = m.message?.text;
+      if (shareLike.length > 0 || text) {
+        out.push({ sender_id: sender, mid: m.message?.mid, text, attachments: shareLike });
+      }
     }
   }
   return out;

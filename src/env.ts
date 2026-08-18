@@ -14,6 +14,7 @@ export interface Env {
   LINK_SIGNING_SECRET: string;
   USER_HASH_SALT: string;
   PUBLIC_BASE_URL: string;
+  ADMIN_TOKEN?: string;
 }
 
 export interface ShareJob {

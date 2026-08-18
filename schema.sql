@@ -28,3 +28,18 @@ CREATE TABLE IF NOT EXISTS link_clicks (
   kind TEXT NOT NULL                   -- 'gcal' | 'ics'
 );
 CREATE INDEX IF NOT EXISTS idx_link_clicks_conversion ON link_clicks(conversion_id);
+
+-- Idempotency: Meta retries webhooks. Dedupe by (sender_id, message_mid).
+CREATE TABLE IF NOT EXISTS seen_messages (
+  key TEXT PRIMARY KEY,
+  ts INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_seen_ts ON seen_messages(ts);
+
+-- Deletion-request receipts, for Meta compliance and audit.
+CREATE TABLE IF NOT EXISTS deletion_requests (
+  code TEXT PRIMARY KEY,
+  user_hash TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'completed'
+);

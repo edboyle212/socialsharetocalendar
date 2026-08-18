@@ -12,6 +12,11 @@ import {
 import { currentUsage, cap, increment } from "./lib/quota.js";
 import { logConversion, logClick } from "./lib/log.js";
 import { allow } from "./lib/rate.js";
+import { seenBefore } from "./lib/idempotency.js";
+import { eraseUser } from "./lib/deletion.js";
+import { parseSignedRequest } from "./lib/signed_request.js";
+import { handleAdmin } from "./admin.js";
+import { privacyPage, termsPage, deletionInfoPage } from "./pages.js";
 import { M } from "./messages.js";
 
 interface LinkToken {
@@ -35,7 +40,14 @@ export default {
     if (url.pathname === "/webhook" && req.method === "POST") return handleWebhook(req, env, ctx);
     if (url.pathname.startsWith("/ics/")) return handleIcs(url, env);
     if (url.pathname.startsWith("/r/")) return handleRedirect(url, env, ctx);
+    if (url.pathname === "/deauthorize" && req.method === "POST") return handleDeauthorize(req, env);
+    if (url.pathname === "/data-deletion" && req.method === "POST") return handleDataDeletion(req, env);
+    if (url.pathname === "/deletion") return htmlResponse(deletionInfoPage(url.searchParams.get("code") ?? undefined));
+    if (url.pathname === "/privacy") return htmlResponse(privacyPage());
+    if (url.pathname === "/terms") return htmlResponse(termsPage());
+    if (url.pathname.startsWith("/admin")) return handleAdmin(req, env);
     if (url.pathname === "/healthz") return new Response("ok");
+    if (url.pathname === "/") return htmlResponse(landingPage());
 
     return new Response("Not found", { status: 404 });
   },
@@ -83,6 +95,27 @@ async function handleWebhook(req: Request, env: Env, ctx: ExecutionContext): Pro
 
 async function enqueueAndAck(env: Env, messages: ReturnType<typeof extractShareMessages>): Promise<void> {
   for (const m of messages) {
+    if (await seenBefore(env, m.sender_id, m.mid)) continue;
+
+    // In-DM deletion shortcut.
+    if ((m.text ?? "").trim().toUpperCase() === "DELETE MY DATA") {
+      try {
+        const { code, url: deletionUrl } = await eraseUser(env, m.sender_id);
+        await safeSend(
+          env,
+          m.sender_id,
+          `Done — your rows have been deleted. Confirmation code: ${code}\n${deletionUrl}`,
+        );
+      } catch (e) {
+        console.error("eraseUser error", e);
+        await safeSend(env, m.sender_id, M.genericError);
+      }
+      continue;
+    }
+
+    // Ignore plain text messages we can't act on.
+    if (m.attachments.length === 0) continue;
+
     const first = m.attachments[0];
     const job: ShareJob = {
       sender_id: m.sender_id,
@@ -247,6 +280,52 @@ async function handleRedirect(url: URL, env: Env, ctx: ExecutionContext): Promis
   if (!t || t.kind !== "gcal" || !t.gcal) return new Response("bad link", { status: 400 });
   if (t.cid > 0) ctx.waitUntil(logClick(env, t.cid, "gcal"));
   return Response.redirect(t.gcal, 302);
+}
+
+// Meta calls this when a user removes the app from their account. Body
+// is a form-encoded `signed_request=<sig>.<payload>`.
+async function handleDeauthorize(req: Request, env: Env): Promise<Response> {
+  const form = await req.formData();
+  const signed = form.get("signed_request");
+  if (typeof signed !== "string") return new Response("bad request", { status: 400 });
+  const p = await parseSignedRequest(env.META_APP_SECRET, signed);
+  if (!p?.user_id) return new Response("unauthorized", { status: 401 });
+  await eraseUser(env, p.user_id);
+  return new Response("ok");
+}
+
+// Data deletion request callback. Same envelope as above; Meta wants
+// JSON back with a URL and confirmation code the user can check.
+async function handleDataDeletion(req: Request, env: Env): Promise<Response> {
+  const form = await req.formData();
+  const signed = form.get("signed_request");
+  if (typeof signed !== "string") return new Response("bad request", { status: 400 });
+  const p = await parseSignedRequest(env.META_APP_SECRET, signed);
+  if (!p?.user_id) return new Response("unauthorized", { status: 401 });
+  const result = await eraseUser(env, p.user_id);
+  return new Response(
+    JSON.stringify({ url: result.url, confirmation_code: result.code }),
+    { headers: { "content-type": "application/json" } },
+  );
+}
+
+function htmlResponse(html: string): Response {
+  return new Response(html, {
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+}
+
+function landingPage(): string {
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>IG Share2Calendar</title>
+<style>body{max-width:640px;margin:4rem auto;padding:0 1rem;font:16px/1.55 -apple-system,system-ui,sans-serif;color-scheme:light dark}h1{font-size:1.6rem}a{color:inherit}</style>
+</head><body>
+<h1>IG Share2Calendar</h1>
+<p>Share an Instagram post to the bot's DM; get back a calendar link. That's it.</p>
+<p><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/deletion">Data deletion</a></p>
+</body></html>`;
 }
 
 async function handleIcs(url: URL, env: Env): Promise<Response> {

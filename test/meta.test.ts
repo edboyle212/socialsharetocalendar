@@ -34,4 +34,24 @@ describe("extractShareMessages", () => {
     expect(extractShareMessages({})).toEqual([]);
     expect(extractShareMessages({ entry: [] })).toEqual([]);
   });
+
+  it("surfaces plain text messages for command handling", () => {
+    const body = {
+      entry: [
+        {
+          messaging: [
+            {
+              sender: { id: "user-c" },
+              message: { mid: "m-1", text: "DELETE MY DATA" },
+            },
+          ],
+        },
+      ],
+    };
+    const out = extractShareMessages(body);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.text).toBe("DELETE MY DATA");
+    expect(out[0]!.mid).toBe("m-1");
+    expect(out[0]!.attachments).toEqual([]);
+  });
 });

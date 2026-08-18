@@ -45,7 +45,16 @@ npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put LINK_SIGNING_SECRET
 npx wrangler secret put USER_HASH_SALT
 npx wrangler secret put PUBLIC_BASE_URL       # e.g. https://ig-share2calendar.workers.dev
+npx wrangler secret put ADMIN_TOKEN           # any high-entropy string; gates /admin
 ```
+
+## Admin wizard
+
+After deploying, open `https://<your-worker>/admin?t=<ADMIN_TOKEN>` to
+see a one-page setup wizard: which secrets are set, live D1/KV/Gemini
+tests, the exact webhook URL and verify token to paste into the Meta
+dashboard, and live conversion stats. The page is bearer-token gated
+and calls only your own worker.
 
 ## Local dev
 
@@ -60,9 +69,15 @@ npx wrangler dev
 - `GET  /webhook` — Meta verification handshake (`hub.challenge`).
 - `POST /webhook` — Meta events. Signature verified via
   `X-Hub-Signature-256`. Ack is fire-and-forget via `ctx.waitUntil`
-  so we always return 200 in <1s.
+  so we always return 200 in <1s. Duplicate `mid` values are dropped.
 - `GET  /ics/:token` — stateless `.ics` download; token is HMAC-signed.
 - `GET  /r/:token` — 302 redirect to Google Calendar; logs a click.
+- `POST /deauthorize` — Meta callback when a user removes the app;
+  erases their rows on receipt.
+- `POST /data-deletion` — Meta data-deletion callback; erases rows
+  and returns `{url, confirmation_code}` JSON per Meta's spec.
+- `GET  /privacy`, `/terms`, `/deletion` — required static pages.
+- `GET  /admin` — setup wizard (bearer-token gated).
 
 ## Instrumentation
 
