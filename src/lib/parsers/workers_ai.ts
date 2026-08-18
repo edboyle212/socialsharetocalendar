@@ -5,6 +5,7 @@ import {
   type ParserResult,
   type ParsedEvent,
   SYSTEM_PROMPT,
+  REFINE_PROMPT,
   extractJson,
   threshold,
 } from "./types.js";
@@ -49,6 +50,18 @@ export const WorkersAiParser: Parser = {
       if (v) return { ...v, outcome: "failed", model: this.id };
     }
     return { confidence: 0, outcome: "failed", model: this.id };
+  },
+
+  async refine(env: Env, current: ParsedEvent, correction: string): Promise<ParsedEvent | null> {
+    const raw = await ai(env).run(TEXT_MODEL, {
+      messages: [
+        { role: "system", content: REFINE_PROMPT },
+        { role: "user", content: `CURRENT_EVENT:\n${JSON.stringify(current)}\n\nCORRECTION:\n${correction}` },
+      ],
+      temperature: 0.1,
+      max_tokens: 512,
+    });
+    return textOf(raw);
   },
 };
 

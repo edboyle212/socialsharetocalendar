@@ -4,7 +4,7 @@ export interface ConversionRow {
   ts: number;
   user_hash: string;
   permalink?: string;
-  parse_outcome: "caption" | "vision" | "failed";
+  parse_outcome: "caption" | "vision" | "failed" | "correction";
   confidence?: number;
   latency_ms: number;
   quota_hit: boolean;

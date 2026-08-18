@@ -1,7 +1,8 @@
 import type { Env, ShareJob } from "./env.js";
 import { verifyMetaSignature, hashUser } from "./lib/crypto.js";
 import { extractShareMessages, sendDM, fetchPost, downloadMedia } from "./lib/meta.js";
-import { runCascade } from "./lib/parsers/index.js";
+import { runCascade, runRefine } from "./lib/parsers/index.js";
+import { savePending, loadPending, clearPending } from "./lib/pending.js";
 import {
   buildPayload,
   googleCalendarUrl,
@@ -125,8 +126,10 @@ async function enqueueAndAck(env: Env, messages: ReturnType<typeof extractShareM
   for (const m of messages) {
     if (await seenBefore(env, m.sender_id, m.mid)) continue;
 
+    const trimmed = (m.text ?? "").trim();
+
     // In-DM deletion shortcut.
-    if ((m.text ?? "").trim().toUpperCase() === "DELETE MY DATA") {
+    if (trimmed.toUpperCase() === "DELETE MY DATA") {
       try {
         const { code, url: deletionUrl } = await eraseUser(env, m.sender_id);
         await safeSend(
@@ -141,8 +144,24 @@ async function enqueueAndAck(env: Env, messages: ReturnType<typeof extractShareM
       continue;
     }
 
-    // Ignore plain text messages we can't act on.
-    if (m.attachments.length === 0) continue;
+    // Text-only message with no attachment: might be a correction to a
+    // pending parse. Route to the correction handler.
+    if (m.attachments.length === 0) {
+      if (!trimmed) continue;
+      const userHash = await hashUser(env.USER_HASH_SALT, m.sender_id);
+      if (trimmed.toUpperCase() === "CANCEL") {
+        await clearPending(env, userHash);
+        await safeSend(env, m.sender_id, "Cancelled — no pending event to update.");
+        continue;
+      }
+      // Rate-limit corrections the same way we rate-limit shares.
+      if (!(await allow(env, userHash))) {
+        await safeSend(env, m.sender_id, "Slow down — try again in a minute.");
+        continue;
+      }
+      await handleCorrection(env, m.sender_id, userHash, trimmed);
+      continue;
+    }
 
     const first = m.attachments[0];
     const job: ShareJob = {
@@ -297,6 +316,94 @@ async function processShare(env: Env, job: ShareJob): Promise<void> {
     ? M.partial(fields, gcalLink, icsLink)
     : M.success(payload.title, when, gcalLink, icsLink);
   await safeSend(env, job.sender_id, text);
+
+  // Stash the pre-normalization event so a follow-up text like
+  // "TZ Europe/Berlin" or "at 9pm" can revise it without re-fetching.
+  await savePending(env, userHash, {
+    event: {
+      title: parsed.title,
+      start: parsed.start,
+      end: parsed.end,
+      location: parsed.location,
+      timezone: parsed.timezone,
+      confidence: parsed.confidence,
+    },
+    ctx: { permalink: post.permalink, username: post.username },
+    createdAt: Date.now(),
+  });
+}
+
+async function handleCorrection(env: Env, senderId: string, userHash: string, text: string): Promise<void> {
+  const started = Date.now();
+  const pending = await loadPending(env, userHash);
+  if (!pending) {
+    await safeSend(
+      env,
+      senderId,
+      "No pending event to update — share an Instagram post first, then reply with a correction.",
+    );
+    return;
+  }
+
+  const refined = await runRefine(env, pending.event, text);
+  if (!refined || !refined.event.start) {
+    await safeSend(env, senderId, "Couldn't apply that correction. Try re-sharing the post.");
+    return;
+  }
+
+  const startNorm = normalizeTime(refined.event.start, refined.event.timezone);
+  const endNorm = refined.event.end
+    ? normalizeTime(refined.event.end, refined.event.timezone)
+    : startNorm;
+  const floating = startNorm.floating;
+  const resolvedTz = startNorm.assumedTz ?? refined.event.timezone;
+
+  const payload = buildPayload(
+    { ...refined.event, start: startNorm.iso, end: endNorm.iso },
+    pending.ctx,
+    { floating },
+  );
+  if (!payload) {
+    await safeSend(env, senderId, "Couldn't apply that correction. Try re-sharing the post.");
+    return;
+  }
+
+  const conversionId = await logConversion(env, {
+    ts: Date.now(),
+    user_hash: userHash,
+    permalink: pending.ctx.permalink,
+    parse_outcome: "correction",
+    confidence: refined.event.confidence,
+    latency_ms: Date.now() - started,
+    quota_hit: false,
+    model: refined.model,
+  });
+
+  const gcalUrl = googleCalendarUrl(payload);
+  const gcalToken = await signToken(env.LINK_SIGNING_SECRET, {
+    cid: conversionId,
+    kind: "gcal",
+    gcal: gcalUrl,
+  } as LinkToken);
+  const icsToken = await signToken(env.LINK_SIGNING_SECRET, {
+    cid: conversionId,
+    kind: "ics",
+    payload,
+  } as LinkToken);
+  const base = env.PUBLIC_BASE_URL.replace(/\/$/, "");
+  const gcalLink = `${base}/r/${gcalToken}`;
+  const icsLink = `${base}/ics/${icsToken}`;
+
+  const when = formatWhen(payload.start, payload.end, resolvedTz, floating);
+  const fields = `• Title: ${payload.title}\n• When: ${when}\n• Where: ${payload.location || "unknown"}`;
+  await safeSend(env, senderId, M.updated(fields, gcalLink, icsLink));
+
+  // Update the pending state so the user can keep refining.
+  await savePending(env, userHash, {
+    event: refined.event,
+    ctx: pending.ctx,
+    createdAt: Date.now(),
+  });
 }
 
 function formatWhen(startIso: string, endIso: string, tz: string | undefined, floating: boolean): string {

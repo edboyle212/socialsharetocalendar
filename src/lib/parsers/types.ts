@@ -27,7 +27,26 @@ export interface ParserInput {
 export interface Parser {
   readonly id: string;
   parse(env: Env, input: ParserInput): Promise<ParserResult>;
+  // Apply a natural-language correction to a previously-extracted
+  // event. Returns the revised event or null on failure.
+  refine?(env: Env, current: ParsedEvent, correction: string): Promise<ParsedEvent | null>;
 }
+
+export const REFINE_PROMPT = `You are updating a previously-extracted event based on the user's correction.
+CURRENT_EVENT is what you extracted before; CORRECTION is a short message from the user.
+
+Return STRICT JSON matching the same schema as the initial extract:
+{ "title"?: string, "start"?: string, "end"?: string, "location"?: string, "timezone"?: string, "confidence": number }
+
+Rules:
+- Keep every CURRENT_EVENT field that the CORRECTION does not contradict.
+- Interpret the correction liberally: "TZ Europe/Berlin" sets timezone;
+  "at 9pm" adjusts the start time (keep the date); "on Sep 20" adjusts
+  the date (keep the time); "at Foo Bar" sets location; free-form
+  natural language also fine.
+- ISO fields stay naive local (no "Z", no offset).
+- "confidence" is your revised estimate for the merged result.
+- Output JSON only, no code fences.`;
 
 export const SYSTEM_PROMPT = `You extract a single event from an Instagram post.
 Return STRICT JSON matching this TypeScript type, and nothing else:

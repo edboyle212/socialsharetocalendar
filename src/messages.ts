@@ -4,6 +4,8 @@ export const M = {
   ack: "Got it, one sec — pulling the details…",
   success: (title: string, when: string, gcal: string, ics: string) =>
     `📅 ${title}\n${when}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}`,
+  updated: (fields: string, gcal: string, ics: string) =>
+    `Updated 👇\n${fields}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}\n\nReply CANCEL if you're done.`,
   partial: (fields: string, gcal: string, ics: string) =>
     `Couldn't read all the details — here's what I got:\n${fields}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}\n\nIf a field is wrong, reply with the correction (e.g. "TZ Europe/Berlin" or a corrected date) and re-share.`,
   notAnEvent:

@@ -105,6 +105,21 @@ SELECT date(ts/1000, 'unixepoch', 'weekday 0', '-6 days') AS week_start,
 SELECT yyyymm, COUNT(*) FROM quota WHERE count >= 5 GROUP BY yyyymm;
 ```
 
+## In-DM commands and corrections
+
+Beyond sharing a post, a user can send plain-text messages:
+
+- **Correction** — after any share, replying with something like
+  `TZ Europe/Berlin`, `at 9pm`, `on Sep 20`, `at Roulette Intermedium`
+  routes to the refine path: the LLM merges the correction with the
+  pending event and the bot re-sends updated calendar links. Pending
+  state lives in KV for 1 hour under `pending:<user_hash>`.
+- **`CANCEL`** — drops pending state.
+- **`DELETE MY DATA`** — erases every row associated with the user.
+
+Corrections are logged with `parse_outcome = 'correction'` so they
+show up separately in analytics.
+
 ## Weekly digest and Phase-2 gating
 
 Cron in `wrangler.toml` fires the `scheduled` handler every Monday at

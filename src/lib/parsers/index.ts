@@ -51,5 +51,27 @@ export async function runCascade(env: Env, input: ParserInput): Promise<ParserRe
   return last ?? { confidence: 0, outcome: "failed", model: "none" };
 }
 
+// Try the primary parser's refine() first, then the fallback's. Returns
+// { event, model } on success or null if both refuse. We deliberately
+// don't merge fields ourselves — the LLM is much better at "keep the
+// bits I didn't correct" than a regex would be.
+export async function runRefine(
+  env: Env,
+  current: import("./types.js").ParsedEvent,
+  correction: string,
+): Promise<{ event: import("./types.js").ParsedEvent; model: string } | null> {
+  for (const id of order(env)) {
+    const p = REGISTRY[id];
+    if (!p.refine) continue;
+    try {
+      const revised = await p.refine(env, current, correction);
+      if (revised) return { event: revised, model: `${p.id}/refine` };
+    } catch (e) {
+      console.error(`refine ${id} threw`, e);
+    }
+  }
+  return null;
+}
+
 export type { Parser, ParserInput, ParserResult };
 export type { ParsedEvent } from "./types.js";

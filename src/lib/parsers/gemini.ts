@@ -5,6 +5,7 @@ import {
   type ParserResult,
   type ParsedEvent,
   SYSTEM_PROMPT,
+  REFINE_PROMPT,
   extractJson,
   threshold,
 } from "./types.js";
@@ -34,6 +35,16 @@ export const GeminiParser: Parser = {
       if (v) return { ...v, outcome: "failed", model: this.id };
     }
     return { confidence: 0, outcome: "failed", model: this.id };
+  },
+
+  async refine(env: Env, current: ParsedEvent, correction: string): Promise<ParsedEvent | null> {
+    if (!env.GEMINI_API_KEY) throw new Error("gemini: GEMINI_API_KEY not set");
+    const text = `${REFINE_PROMPT}\n\nCURRENT_EVENT:\n${JSON.stringify(current)}\n\nCORRECTION:\n${correction}`;
+    const body = {
+      contents: [{ role: "user", parts: [{ text }] }],
+      generationConfig: { temperature: 0.1, responseMimeType: "application/json" },
+    };
+    return callGemini(env, body);
   },
 };
 
