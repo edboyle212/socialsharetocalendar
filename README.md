@@ -7,7 +7,8 @@ the server parses the post and replies with an "Add to Google Calendar"
 link and a `.ics` download. One share in, one reply out — nothing else.
 
 See `IGshare2calendarbuildspecmvp.md` (in the original upload) for the
-product spec. Phase-2 gating lives in `THRESHOLDS.md`.
+product spec. Phase-2 gating lives in `THRESHOLDS.md`. Meta app-review
+submission is walked through in `docs/META_APP_REVIEW.md`.
 
 ## Layout
 
