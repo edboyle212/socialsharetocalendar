@@ -1,0 +1,37 @@
+name = "ig-share2calendar"
+main = "src/worker.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Public routes:
+#   POST /webhook  — Meta webhook ingress (verified via X-Hub-Signature-256)
+#   GET  /webhook  — Meta verification handshake (hub.challenge)
+#   GET  /ics/:token — .ics download for calendar clients
+#   GET  /r/:token   — link-tap redirect (instrumentation)
+
+[[queues.producers]]
+binding = "SHARE_QUEUE"
+queue = "share-events"
+
+[[queues.consumers]]
+queue = "share-events"
+max_batch_size = 5
+max_batch_timeout = 2
+max_retries = 3
+dead_letter_queue = "share-events-dlq"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ig_share2calendar"
+database_id = "REPLACE_WITH_D1_ID"
+
+[[kv_namespaces]]
+binding = "RATE_KV"
+id = "REPLACE_WITH_KV_ID"
+
+[vars]
+GRAPH_API_VERSION = "v21.0"
+QUOTA_MONTHLY_CAP = "5"
+PARSE_CONFIDENCE_THRESHOLD = "0.6"
+# LINK_SIGNING_SECRET, META_APP_SECRET, META_VERIFY_TOKEN,
+# META_PAGE_TOKEN, GEMINI_API_KEY are wrangler secrets.

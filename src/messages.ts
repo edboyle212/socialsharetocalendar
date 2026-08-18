@@ -1,0 +1,19 @@
+// User-facing DM strings. One place to tweak copy.
+
+export const M = {
+  ack: "Got it, one sec — pulling the details…",
+  success: (title: string, when: string, gcal: string, ics: string) =>
+    `📅 ${title}\n${when}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}`,
+  partial: (fields: string, gcal: string, ics: string) =>
+    `Couldn't read all the details — here's what I got:\n${fields}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}\n\nReply with corrections and I'll try again.`,
+  notAnEvent:
+    "This doesn't look like an event post — no date I could read. If you think I'm wrong, reply with the date and I'll try again.",
+  parseFailed:
+    "Sorry — couldn't read the event details from this one. Common causes: caption has no date, or the flyer text isn't legible.",
+  quotaHit: (cap: number) =>
+    `You've hit the free monthly limit of ${cap} events. Resets on the 1st. (More coming soon — reply UPGRADE to be notified.)`,
+  privatePost:
+    "I can't fetch this post — it may be private or from an account that hasn't authorized the bot.",
+  genericError:
+    "Something went wrong on my side. Try sharing the post again in a minute.",
+};
