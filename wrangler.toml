@@ -43,7 +43,7 @@ crons = ["0 14 * * 1"]  # Mondays 14:00 UTC → weekly digest
 [[d1_databases]]
 binding = "DB"
 database_name = "ig_share2calendar"
-database_id = "REPLACE_WITH_D1_ID"
+database_id = "f8fc71b5-0765-4cfb-aadf-01a823ebf730"
 migrations_dir = "migrations"
 
 [[kv_namespaces]]
