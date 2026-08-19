@@ -48,7 +48,7 @@ migrations_dir = "migrations"
 
 [[kv_namespaces]]
 binding = "RATE_KV"
-id = "REPLACE_WITH_KV_ID"
+id = "ee3d7096abb84e58845205e39b23d211"
 
 # Cloudflare Workers AI — in-Worker Llama 3.2 Vision, used as the
 # fallback parser (or set PARSER_PRIMARY="workers-ai" to promote it).
