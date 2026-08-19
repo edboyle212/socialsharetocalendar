@@ -1,5 +1,7 @@
 import type { Env } from "../env.js";
 
+export type ConversionSource = "dm" | "comment_mention" | "comment_cta";
+
 export interface ConversionRow {
   ts: number;
   user_hash: string;
@@ -9,12 +11,13 @@ export interface ConversionRow {
   latency_ms: number;
   quota_hit: boolean;
   model?: string;
+  source?: ConversionSource;
 }
 
 export async function logConversion(env: Env, row: ConversionRow): Promise<number> {
   const res = await env.DB.prepare(
-    `INSERT INTO conversions (ts, user_hash, permalink, parse_outcome, confidence, latency_ms, quota_hit, model)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO conversions (ts, user_hash, permalink, parse_outcome, confidence, latency_ms, quota_hit, model, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       row.ts,
@@ -25,6 +28,7 @@ export async function logConversion(env: Env, row: ConversionRow): Promise<numbe
       row.latency_ms,
       row.quota_hit ? 1 : 0,
       row.model ?? null,
+      row.source ?? "dm",
     )
     .run();
   const id = (res.meta as { last_row_id?: number } | undefined)?.last_row_id;

@@ -1,11 +1,11 @@
 import type { Env } from "../env.js";
 
-// Meta retries webhooks on any non-2xx or network hiccup. Every message
-// carries a `mid`; dedupe on (sender, mid). Rows are pruned lazily by
-// the admin endpoint; not important for MVP volume.
-export async function seenBefore(env: Env, senderId: string, mid: string | undefined): Promise<boolean> {
-  if (!mid) return false;
-  const key = `${senderId}:${mid}`;
+// Meta retries webhooks on any non-2xx or network hiccup. Callers name
+// a namespace so IDs from different webhook fields (message MIDs,
+// comment IDs, mention IDs) can't collide.
+export async function seenBefore(env: Env, namespace: string, id: string | undefined): Promise<boolean> {
+  if (!id) return false;
+  const key = `${namespace}:${id}`;
   try {
     const res = await env.DB.prepare(
       "INSERT OR IGNORE INTO seen_messages(key, ts) VALUES(?, ?)",

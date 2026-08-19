@@ -1,6 +1,7 @@
-import type { Env, ShareJob } from "./env.js";
+import type { Env, MentionJob, ShareJob } from "./env.js";
 import { verifyMetaSignature, hashUser } from "./lib/crypto.js";
-import { extractShareMessages, sendDM, fetchPost, downloadMedia } from "./lib/meta.js";
+import { extractShareMessages, extractMentions, sendDM, fetchPost, downloadMedia } from "./lib/meta.js";
+import { handleMention } from "./lib/mentions.js";
 import { runCascade, runRefine } from "./lib/parsers/index.js";
 import { savePending, loadPending, clearPending } from "./lib/pending.js";
 import {
@@ -57,22 +58,34 @@ export default {
     return new Response("Not found", { status: 404 });
   },
 
-  async queue(batch: MessageBatch<ShareJob>, env: Env, _ctx: ExecutionContext): Promise<void> {
-    // One handler serves both queues; dispatch by batch.queue.
+  async queue(batch: MessageBatch<ShareJob | MentionJob>, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // One handler serves all queues; dispatch by batch.queue.
     if (batch.queue === "share-events-dlq") {
       for (const msg of batch.messages) {
         try {
-          await handleDeadLetter(env, msg.body);
+          await handleDeadLetter(env, msg.body as ShareJob);
         } catch (e) {
           console.error("dlq handler failed", e);
         }
-        msg.ack(); // dead-letter processing is best-effort; don't retry
+        msg.ack();
+      }
+      return;
+    }
+    if (batch.queue === "share-mentions") {
+      for (const msg of batch.messages) {
+        try {
+          await handleMention(env, msg.body as MentionJob);
+          msg.ack();
+        } catch (err) {
+          console.error("handleMention failed", err);
+          msg.retry();
+        }
       }
       return;
     }
     for (const msg of batch.messages) {
       try {
-        await processShare(env, msg.body);
+        await processShare(env, msg.body as ShareJob);
         msg.ack();
       } catch (err) {
         console.error("processShare failed", err);
@@ -118,13 +131,29 @@ async function handleWebhook(req: Request, env: Env, ctx: ExecutionContext): Pro
   }
 
   const messages = extractShareMessages(body as Parameters<typeof extractShareMessages>[0]);
+  const mentions = extractMentions(body as Parameters<typeof extractMentions>[0]);
   ctx.waitUntil(enqueueAndAck(env, messages));
+  ctx.waitUntil(enqueueMentions(env, mentions));
   return new Response("ok", { status: 200 });
+}
+
+async function enqueueMentions(env: Env, mentions: ReturnType<typeof extractMentions>): Promise<void> {
+  for (const m of mentions) {
+    // Idempotency: Meta retries mention deliveries too.
+    if (m.comment_id && (await seenBefore(env, "mention", m.comment_id))) continue;
+    const job: MentionJob = {
+      ig_user_id: m.ig_user_id,
+      media_id: m.media_id,
+      comment_id: m.comment_id,
+      received_at: Date.now(),
+    };
+    await env.MENTION_QUEUE.send(job);
+  }
 }
 
 async function enqueueAndAck(env: Env, messages: ReturnType<typeof extractShareMessages>): Promise<void> {
   for (const m of messages) {
-    if (await seenBefore(env, m.sender_id, m.mid)) continue;
+    if (await seenBefore(env, m.sender_id, m.mid)) continue;   // dedupe DM mids by sender
 
     const trimmed = (m.text ?? "").trim();
 

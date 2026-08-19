@@ -2,6 +2,7 @@ export interface Env {
   DB: D1Database;
   RATE_KV: KVNamespace;
   SHARE_QUEUE: Queue<ShareJob>;
+  MENTION_QUEUE: Queue<MentionJob>;
 
   GRAPH_API_VERSION: string;
   QUOTA_MONTHLY_CAP: string;
@@ -24,5 +25,12 @@ export interface ShareJob {
   sender_id: string;
   attachment_url?: string;
   attachment_payload_id?: string;
+  received_at: number;
+}
+
+export interface MentionJob {
+  ig_user_id: string;
+  media_id: string;
+  comment_id?: string;
   received_at: number;
 }

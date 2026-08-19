@@ -83,7 +83,11 @@ npx wrangler dev
 - `GET  /webhook` — Meta verification handshake (`hub.challenge`).
 - `POST /webhook` — Meta events. Signature verified via
   `X-Hub-Signature-256`. Ack is fire-and-forget via `ctx.waitUntil`
-  so we always return 200 in <1s. Duplicate `mid` values are dropped.
+  so we always return 200 in <1s. Duplicate `mid` values are dropped,
+  as are duplicate `mentions` comment IDs.
+  Subscribe the app to two fields:
+    - `messages` — for share-to-DM (the core flow).
+    - `mentions` — for @-tag comment replies (public viral surface).
 - `GET  /ics/:token` — stateless `.ics` download; token is HMAC-signed.
 - `GET  /r/:token` — 302 redirect to Google Calendar; logs a click.
 - `POST /deauthorize` — Meta callback when a user removes the app;

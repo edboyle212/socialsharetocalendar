@@ -13,8 +13,19 @@ compatibility_flags = ["nodejs_compat"]
 binding = "SHARE_QUEUE"
 queue = "share-events"
 
+[[queues.producers]]
+binding = "MENTION_QUEUE"
+queue = "share-mentions"
+
 [[queues.consumers]]
 queue = "share-events"
+max_batch_size = 5
+max_batch_timeout = 2
+max_retries = 3
+dead_letter_queue = "share-events-dlq"
+
+[[queues.consumers]]
+queue = "share-mentions"
 max_batch_size = 5
 max_batch_timeout = 2
 max_retries = 3

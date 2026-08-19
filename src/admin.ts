@@ -192,6 +192,7 @@ interface Stats {
   totalConversions: number;
   last7d: number;
   outcomeSplit: Array<{ parse_outcome: string; n: number }>;
+  sourceSplit7d: Array<{ source: string; n: number }>;
   quotaHits30d: number;
   activeUsers30d: number;
   dlq7d: number;
@@ -220,10 +221,14 @@ async function stats(env: Env): Promise<Stats> {
   const dlq7 = (await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM dlq_events WHERE ts >= ?",
   ).bind(week).first<{ n: number }>())?.n ?? 0;
+  const bySource7 = ((await env.DB.prepare(
+    "SELECT COALESCE(source, 'dm') AS source, COUNT(*) AS n FROM conversions WHERE ts >= ? GROUP BY source",
+  ).bind(week).all<{ source: string; n: number }>()).results ?? []);
   return {
     totalConversions: total,
     last7d: last7,
     outcomeSplit: split,
+    sourceSplit7d: bySource7,
     quotaHits30d: qHits,
     activeUsers30d: active,
     dlq7d: dlq7,

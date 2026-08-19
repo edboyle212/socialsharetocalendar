@@ -2,6 +2,15 @@
 
 export const M = {
   ack: "Got it, one sec — pulling the details…",
+
+  // Comment-mention replies. These land in a public IG comment thread,
+  // so they need to be short and self-explanatory. No emoji-only lines
+  // — some feeds render them poorly.
+  commentLink: (username: string | undefined, when: string, gcal: string) =>
+    `${username ? "@" + username + " " : ""}📅 ${when}\nAdd to Google Calendar: ${gcal}`,
+  commentCta: (username: string | undefined) =>
+    `${username ? "@" + username + " " : ""}DM me this post and I'll send you a calendar link 📅`,
+
   success: (title: string, when: string, gcal: string, ics: string) =>
     `📅 ${title}\n${when}\n\nAdd to Google Calendar:\n${gcal}\n\nOr download .ics:\n${ics}`,
   updated: (fields: string, gcal: string, ics: string) =>

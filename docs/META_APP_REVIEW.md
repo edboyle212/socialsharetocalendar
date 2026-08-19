@@ -48,7 +48,9 @@ frozen; what Meta asks for shifts.
      - **Verify Token** → the Meta webhook's Verify Token field.
 4. Meta will `GET /webhook?hub.mode=subscribe&hub.verify_token=…`.
     Verified in code at `src/worker.ts` → `verifyHandshake`.
-5. Subscribe the app to the **`messages`** webhook field.
+5. Subscribe the app to two webhook fields:
+    - **`messages`** — the core share-to-DM flow.
+    - **`mentions`** — public comment reply when someone @-tags the bot.
 
 ## 4. Permissions to request
 
@@ -61,6 +63,10 @@ are:
    This is the only permission that materially matters.
 - **`instagram_business_basic`** — usually required alongside the
    above so the app can read the connected IG account's identity.
+- **`instagram_business_manage_comments`** — required for the
+   `mentions` flow: the bot needs it to (a) read the mentioned
+   media/comment via `mentioned_media` / `mentioned_comment` edges,
+   and (b) post a public reply to the comment.
 
 Do **not** request permissions the app does not use (extra
 permissions slow review and get denied). No `pages_manage_posts`,
